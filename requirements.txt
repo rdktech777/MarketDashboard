@@ -6,7 +6,6 @@ pyyaml
 bcrypt
 yfinance
 pandas
-YAML
 YFinance
 Pandas
 Matplotlib
