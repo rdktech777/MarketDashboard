@@ -1,95 +1,72 @@
 import streamlit as st
-import pandas as pd
 import yfinance as yf
-import plotly.express as px
+import pandas as pd
+import json
+import os
+from github import Github
 
-st.set_page_config(page_title="Indian Stock Dashboard", layout="wide", page_icon="📈")
+# ---------------- GitHub Setup ----------------
+GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+REPO_NAME = "username/marketdashboard"  # Replace with your GitHub repo
+BRANCH = "main"
 
-st.title("📈 Indian Stock Portfolio Dashboard")
+def push_to_github(file_path, data_dict):
+    g = Github(GITHUB_TOKEN)
+    repo = g.get_repo(REPO_NAME)
+    content = json.dumps(data_dict, indent=4)
+    try:
+        contents = repo.get_contents(file_path, ref=BRANCH)
+        repo.update_file(contents.path, f"Update {file_path}", content, contents.sha, branch=BRANCH)
+    except:
+        repo.create_file(file_path, f"Create {file_path}", content, branch=BRANCH)
 
-# -----------------------------
-# SIDEBAR MENU
-# -----------------------------
-menu = st.sidebar.radio("Navigation", ["Portfolio", "Watchlist", "Analytics"])
+def load_from_github(file_path):
+    g = Github(GITHUB_TOKEN)
+    repo = g.get_repo(REPO_NAME)
+    try:
+        contents = repo.get_contents(file_path, ref=BRANCH)
+        return json.loads(contents.decoded_content.decode())
+    except:
+        return {}
 
-# -----------------------------
-# PORTFOLIO DATA
-# -----------------------------
-if "portfolio" not in st.session_state:
-    st.session_state.portfolio = pd.DataFrame(columns=["Stock", "Qty", "Avg Price"])
+# ---------------- Load Data ----------------
+portfolio = load_from_github("portfolio.json")
+watchlist = load_from_github("watchlist.json")
 
-# -----------------------------
-# PORTFOLIO TAB
-# -----------------------------
-if menu == "Portfolio":
+# ---------------- Streamlit UI ----------------
+st.title("📈 Indian Stock Dashboard")
+
+tab = st.tabs(["Portfolio", "Watchlist"])
+
+# ---- Portfolio Tab ----
+with tab[0]:
     st.subheader("Your Portfolio")
+    st.write(portfolio)
+    
+    with st.expander("➕ Add / Update Stock"):
+        stock = st.text_input("Stock Symbol (e.g. TCS.NS)").upper()
+        qty = st.number_input("Quantity", min_value=1, step=1)
+        avg_price = st.number_input("Average Price", min_value=0.0, step=0.01)
+        if st.button("Add / Update"):
+            portfolio[stock] = {"qty": qty, "avg_price": avg_price}
+            push_to_github("portfolio.json", portfolio)
+            st.success(f"{stock} saved!")
 
-    # Metrics cards
-    if not st.session_state.portfolio.empty:
-        total_invested = (st.session_state.portfolio["Qty"] * st.session_state.portfolio["Avg Price"]).sum()
-        
-        # Fetch current price
-        st.session_state.portfolio["Current Price"] = st.session_state.portfolio["Stock"].apply(
-            lambda x: yf.Ticker(x).info.get("regularMarketPrice", 0)
-        )
-        st.session_state.portfolio["P&L"] = (st.session_state.portfolio["Current Price"] - st.session_state.portfolio["Avg Price"]) * st.session_state.portfolio["Qty"]
-        current_value = (st.session_state.portfolio["Current Price"] * st.session_state.portfolio["Qty"]).sum()
-        unrealized_pnl = current_value - total_invested
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Invested", f"₹{total_invested:,.2f}")
-        col2.metric("Current Value", f"₹{current_value:,.2f}")
-        col3.metric("Unrealized P&L", f"₹{unrealized_pnl:,.2f}")
-
-        st.dataframe(st.session_state.portfolio, use_container_width=True)
-
-    # Add new stock
-    with st.expander("➕ Add New Stock"):
-        with st.form("add_stock_form"):
-            stock = st.text_input("Stock Symbol (NSE ticker)")
-            qty = st.number_input("Quantity", min_value=1, step=1)
-            avg_price = st.number_input("Average Price", min_value=0.01, step=0.01)
-            submitted = st.form_submit_button("Add Stock")
-            if submitted:
-                new_row = pd.DataFrame([[stock, qty, avg_price]], columns=["Stock", "Qty", "Avg Price"])
-                st.session_state.portfolio = pd.concat([st.session_state.portfolio, new_row], ignore_index=True)
-                st.success(f"{stock} added to portfolio!")
-
-    # Delete stock
-    with st.expander("🗑 Delete Stock"):
-        if not st.session_state.portfolio.empty:
-            stock_to_delete = st.selectbox("Select stock to delete", options=st.session_state.portfolio["Stock"].tolist())
-            if st.button("Delete Stock"):
-                st.session_state.portfolio = st.session_state.portfolio[st.session_state.portfolio["Stock"] != stock_to_delete]
-                st.success(f"{stock_to_delete} deleted!")
-
-# -----------------------------
-# WATCHLIST TAB
-# -----------------------------
-elif menu == "Watchlist":
-    st.subheader("Watchlist")
-    if "watchlist" not in st.session_state:
-        st.session_state.watchlist = pd.DataFrame(columns=["Stock"])
-
-    with st.expander("➕ Add to Watchlist"):
-        new_watch = st.text_input("Stock Symbol")
+# ---- Watchlist Tab ----
+with tab[1]:
+    st.subheader("Your Watchlist")
+    st.write(watchlist)
+    
+    with st.expander("➕ Add Stock to Watchlist"):
+        stock = st.text_input("Stock Symbol (Watchlist)").upper()
         if st.button("Add to Watchlist"):
-            if new_watch and new_watch not in st.session_state.watchlist["Stock"].tolist():
-                st.session_state.watchlist = pd.concat([st.session_state.watchlist, pd.DataFrame([[new_watch]], columns=["Stock"])], ignore_index=True)
-                st.success(f"{new_watch} added!")
+            watchlist[stock] = {}
+            push_to_github("watchlist.json", watchlist)
+            st.success(f"{stock} added to watchlist!")
 
-    st.dataframe(st.session_state.watchlist, use_container_width=True)
-
-# -----------------------------
-# ANALYTICS TAB
-# -----------------------------
-elif menu == "Analytics":
-    st.subheader("Portfolio Analytics")
-    if not st.session_state.portfolio.empty:
-        # Pie chart for allocation
-        fig = px.pie(st.session_state.portfolio, names="Stock", values="Qty", title="Portfolio Allocation")
-        st.plotly_chart(fig, use_container_width=True)
-
-        # P&L distribution
-        fig2 = px.bar(st.session_state.portfolio, x="Stock", y="P&L", title="Stock-wise Gain/Loss")
-        st.plotly_chart(fig2, use_container_width=True)
+# ---- Live Prices ----
+st.subheader("Live Prices")
+all_stocks = list(portfolio.keys()) + list(watchlist.keys())
+if all_stocks:
+    data = yf.download(all_stocks, period="1d", interval="1m")['Adj Close'].iloc[-1]
+    st.table(data)
