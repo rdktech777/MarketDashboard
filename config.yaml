@@ -1,12 +1,16 @@
- 
-  credentials:
+# Plain password for reference:
+# admin password = rdk@1234
+# venki password - venki@123
+
+credentials:
   users:
     admin:
       name: Admin User
-      password: $2b$12$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      password: "$2b$12$Q2iUQxO8eXadGQvi5IG0yOCTt2x6cRyEWx6KkP/4O1zzRssqzQeTy"
     pvenka12:
       name: Venkatesh PS
-      password: $2b$12$xxLmyDQvvODQFwiX1u1XL.w1ByhCC5PCrGBRAPtG0wiHw9XRHnAdK
+      password: "$2b$12$xxLmyDQvvODQFwiX1u1XL.w1ByhCC5PCrGBRAPtG0wiHw9XRHnAdK"
+
 cookie:
   name: dashboard_cookie
   key: dashboard_key
