@@ -5,74 +5,84 @@ from yaml.loader import SafeLoader
 import json
 import os
 
-# ---------------------------------------------------------
-# LOAD CONFIG
-# ---------------------------------------------------------
-with open("config.yaml") as file:
-    config = yaml.load(file, Loader=SafeLoader)
+
+# ---------------------------------------
+# LOAD AUTH CONFIG
+# ---------------------------------------
+def load_config():
+    with open("config.yaml", "r") as file:
+        return yaml.load(file, Loader=SafeLoader)
+
+
+config = load_config()
 
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
     config['cookie']['key'],
     config['cookie']['expiry_days'],
+    config.get('preauthorized')
 )
 
-st.set_page_config(page_title="India Stock Dashboard", layout="wide")
+
+# ---------------------------------------
+# LOGIN UI
+# ---------------------------------------
+st.set_page_config(page_title="Indian Stock Dashboard", layout="wide")
 
 name, auth_status, username = authenticator.login("Login", "main")
 
-if auth_status == False:
-    st.error("Username or password is incorrect")
+if auth_status is False:
+    st.error("Invalid username or password")
 
-elif auth_status == None:
+elif auth_status is None:
     st.warning("Please enter your username and password")
 
-elif auth_status:
-    # ---------------------------------------------------------
-    # SUCCESSFUL LOGIN → LOAD APP
-    # ---------------------------------------------------------
-    authenticator.logout("Logout", "sidebar")
-    st.sidebar.write(f"👤 Logged in as **{name}**")
 
-    # ---------------------------------------------------------
-    # JSON STORAGE HELPERS
-    # ---------------------------------------------------------
-    def load_data(filename):
+# ---------------------------------------
+# IF LOGGED IN — SHOW DASHBOARD
+# ---------------------------------------
+if auth_status:
+
+    # Logout button
+    authenticator.logout("Logout", "sidebar")
+    st.sidebar.success(f"👤 Logged in as: **{name}**")
+
+    st.title("📈 Indian Stock Portfolio Dashboard")
+
+    # ---------------------------------------
+    # JSON DATA HELPERS
+    # ---------------------------------------
+    def load_json(filename):
         if not os.path.exists(filename):
             with open(filename, "w") as f:
                 json.dump([], f)
         with open(filename, "r") as f:
             return json.load(f)
 
-    def save_data(filename, data):
+    def save_json(filename, data):
         with open(filename, "w") as f:
             json.dump(data, f, indent=4)
 
-    # ---------------------------------------------------------
-    # LOAD DATA
-    # ---------------------------------------------------------
-    portfolio = load_data("portfolio.json")
-    watchlist = load_data("watchlist.json")
+    portfolio = load_json("portfolio.json")
+    watchlist = load_json("watchlist.json")
 
-    # ---------------------------------------------------------
-    # APP UI
-    # ---------------------------------------------------------
-    st.title("📈 Indian Stock Portfolio Dashboard")
-
+    # ---------------------------------------
+    # TABS
+    # ---------------------------------------
     tab1, tab2 = st.tabs(["💼 Portfolio", "👀 Watchlist"])
 
-    # =========================================================
-    # TAB 1: PORTFOLIO
-    # =========================================================
+    # ============================================
+    # PORTFOLIO TAB
+    # ============================================
     with tab1:
         st.header("💼 Your Portfolio")
 
-        st.subheader("Add Stock to Portfolio")
+        st.subheader("Add a New Stock")
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            stock = st.text_input("Stock Name (e.g. TATAMOTORS)")
+            stock = st.text_input("Stock Symbol (e.g. TATAPOWER)")
         with col2:
             qty = st.number_input("Quantity", min_value=1, value=1)
         with col3:
@@ -86,31 +96,30 @@ elif auth_status:
                 "qty": qty,
                 "avg_price": avg_price
             })
-            save_data("portfolio.json", portfolio)
-            st.success(f"Added {stock.upper()} to your portfolio!")
-            st.rerun()
+            save_json("portfolio.json", portfolio)
+            st.success(f"{stock.upper()} added to portfolio! Refresh to view.")
 
-        st.subheader("📋 Current Portfolio")
+        st.subheader("📋 Portfolio Data")
 
         if len(portfolio) == 0:
-            st.info("No stocks added yet.")
+            st.info("No stocks in portfolio.")
         else:
             st.table(portfolio)
 
         st.subheader("🗑 Delete Stock")
-        names = [p["stock"] for p in portfolio]
 
-        if names:
-            del_name = st.selectbox("Select stock to delete", names)
+        stock_names = [p["stock"] for p in portfolio]
+
+        if stock_names:
+            delete_name = st.selectbox("Choose stock to delete", stock_names)
             if st.button("Delete Stock"):
-                portfolio = [p for p in portfolio if p["stock"] != del_name]
-                save_data("portfolio.json", portfolio)
-                st.warning(f"{del_name} deleted from portfolio.")
-                st.rerun()
+                portfolio = [p for p in portfolio if p["stock"] != delete_name]
+                save_json("portfolio.json", portfolio)
+                st.warning(f"{delete_name} removed. Refresh to view.")
 
-    # =========================================================
-    # TAB 2: WATCHLIST
-    # =========================================================
+    # ============================================
+    # WATCHLIST TAB
+    # ============================================
     with tab2:
         st.header("👀 Watchlist")
 
@@ -118,25 +127,26 @@ elif auth_status:
 
         col1, col2 = st.columns(2)
         with col1:
-            wl_stock = st.text_input("Stock Symbol (e.g. RELIANCE)")
+            watch_stock = st.text_input("Stock (e.g. RELIANCE)")
         with col2:
-            wl_btn = st.button("Add to Watchlist")
+            add_wl = st.button("Add to Watchlist")
 
-        if wl_btn and wl_stock:
-            watchlist.append({"stock": wl_stock.upper()})
-            save_data("watchlist.json", watchlist)
-            st.success(f"Added {wl_stock.upper()} to watchlist!")
-            st.rerun()
+        if add_wl and watch_stock:
+            watchlist.append({"stock": watch_stock.upper()})
+            save_json("watchlist.json", watchlist)
+            st.success(f"{watch_stock.upper()} added to watchlist!")
 
         st.subheader("📋 Watchlist Data")
         st.table(watchlist)
 
-        names_wl = [w["stock"] for w in watchlist]
+        # Delete watchlist
+        wl_names = [w["stock"] for w in watchlist]
 
-        if names_wl:
-            del_wl = st.selectbox("Delete from watchlist", names_wl)
-            if st.button("Delete Watchlist Item"):
-                watchlist = [w for w in watchlist if w["stock"] != del_wl]
-                save_data("watchlist.json", watchlist)
-                st.warning(f"{del_wl} removed from watchlist.")
-                st.rerun()
+        if wl_names:
+            wl_del = st.selectbox("Delete watchlist item", wl_names)
+            if st.button("Delete Watchlist Stock"):
+                watchlist = [w for w in watchlist if w["stock"] != wl_del]
+                save_json("watchlist.json", watchlist)
+                st.warning(f"{wl_del} removed.")
+
+
