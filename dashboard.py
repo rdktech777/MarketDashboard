@@ -1,149 +1,104 @@
 import streamlit as st
-import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
-import json
-import os
 import pandas as pd
 import yfinance as yf
-import plotly.express as px
+import streamlit_authenticator as stauth
+import yaml
 
-# -----------------------------
-# Load Authentication Config
-# -----------------------------
+# --------------------------
+# ---- Load config.yaml ----
+# --------------------------
 with open("config.yaml") as file:
-    config = yaml.load(file, Loader=SafeLoader)
+    config = yaml.safe_load(file)
 
 authenticator = stauth.Authenticate(
-    credentials=config['credentials'],
-    cookie_name=config['cookie']['name'],
-    key=config['cookie']['key'],
+    config['credentials'],
+    config['cookie']['name'],
+    config['cookie']['key'],
     cookie_expiry_days=config['cookie']['expiry_days']
 )
 
-name, auth_status, username = authenticator.login(
-    form_name="Login",
-    location="main"
-)
+name, authentication_status, username = authenticator.login("Login", "main")
 
-# -----------------------------
-# Handle login states
-# -----------------------------
-if auth_status is False:
-    st.error("❌ Incorrect username or password.")
-elif auth_status is None:
-    st.warning("⚠️ Please enter your login details.")
-elif auth_status:
+if authentication_status is False:
+    st.error("Username/password is incorrect")
+elif authentication_status is None:
+    st.warning("Please enter your username and password")
+elif authentication_status:
+    st.success(f"Welcome {name}!")
     authenticator.logout("Logout", "sidebar")
-    st.sidebar.success(f"👤 Logged in as: **{username}**")
 
-    # -----------------------------
-    # JSON Data Handling
-    # -----------------------------
-    def load_data(filename):
-        if not os.path.exists(filename):
-            with open(filename, "w") as f:
-                json.dump([], f)
-        with open(filename, "r") as f:
-            return json.load(f)
+    # --------------------------
+    # ---- Dashboard Tabs ------
+    # --------------------------
+    tabs = ["Portfolio", "Watchlist"]
+    selected_tab = st.sidebar.radio("Navigate", tabs)
 
-    def save_data(filename, data):
-        with open(filename, "w") as f:
-            json.dump(data, f, indent=4)
+    if selected_tab == "Portfolio":
+        st.title("📈 Portfolio Dashboard")
 
-    portfolio = load_data("portfolio.json")
-    watchlist = load_data("watchlist.json")
+        if "portfolio" not in st.session_state:
+            st.session_state.portfolio = pd.DataFrame(columns=["Stock", "Qty", "Avg Price"])
 
-    st.set_page_config(page_title="Indian Stock Dashboard", layout="wide")
-    st.title("📊 Indian Stock Portfolio Dashboard")
+        with st.expander("➕ Add New Stock"):
+            new_stock = st.text_input("Stock Ticker").upper()
+            new_qty = st.number_input("Quantity", min_value=1, value=1)
+            new_price = st.number_input("Average Price", min_value=0.0, value=0.0)
+            if st.button("Add Stock"):
+                st.session_state.portfolio = pd.concat(
+                    [st.session_state.portfolio,
+                     pd.DataFrame([[new_stock, new_qty, new_price]], columns=["Stock", "Qty", "Avg Price"])],
+                    ignore_index=True
+                )
+                st.success(f"Added {new_stock} to portfolio")
 
-    tab1, tab2, tab3 = st.tabs(["💼 Portfolio", "👀 Watchlist", "📈 Market Charts"])
+        if not st.session_state.portfolio.empty:
+            portfolio_df = st.session_state.portfolio.copy()
 
-    # -----------------------------
-    # TAB 1 — PORTFOLIO
-    # -----------------------------
-    with tab1:
-        st.header("💼 Portfolio Manager")
+            def get_current_price(ticker):
+                try:
+                    return yf.Ticker(ticker).info["regularMarketPrice"]
+                except:
+                    return None
 
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            stock = st.text_input("Stock Symbol (e.g., TCS)")
-        with col2:
-            qty = st.number_input("Quantity", min_value=1, value=1)
-        with col3:
-            avg_price = st.number_input("Average Buy Price", min_value=1.0)
-        with col4:
-            add_btn = st.button("Add Stock")
+            portfolio_df["Current Price"] = portfolio_df["Stock"].apply(get_current_price)
+            portfolio_df["Current Value"] = portfolio_df["Qty"] * portfolio_df["Current Price"]
+            portfolio_df["Invested Value"] = portfolio_df["Qty"] * portfolio_df["Avg Price"]
+            portfolio_df["P/L"] = portfolio_df["Current Value"] - portfolio_df["Invested Value"]
 
-        if add_btn and stock:
-            portfolio.append({
-                "stock": stock.upper(),
-                "qty": qty,
-                "avg_price": avg_price
-            })
-            save_data("portfolio.json", portfolio)
-            st.success(f"{stock.upper()} added to portfolio.")
+            st.dataframe(portfolio_df)
 
-        st.subheader("📋 Current Portfolio")
-        if len(portfolio) == 0:
-            st.info("Add stocks to build your portfolio.")
-        else:
-            df_portfolio = pd.DataFrame(portfolio)
-            st.table(df_portfolio)
+            total_invested = portfolio_df["Invested Value"].sum()
+            total_current = portfolio_df["Current Value"].sum()
+            total_pl = total_current - total_invested
 
-        st.subheader("🗑 Remove a Stock")
-        if len(portfolio) > 0:
-            names = [p["stock"] for p in portfolio]
-            del_pick = st.selectbox("Select stock", names)
-            if st.button("Delete Stock"):
-                portfolio = [p for p in portfolio if p["stock"] != del_pick]
-                save_data("portfolio.json", portfolio)
-                st.warning(f"{del_pick} deleted.")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Invested", f"₹{total_invested:,.2f}")
+            col2.metric("Current Value", f"₹{total_current:,.2f}")
+            col3.metric("Unrealized P/L", f"₹{total_pl:,.2f}")
 
-    # -----------------------------
-    # TAB 2 — WATCHLIST
-    # -----------------------------
-    with tab2:
-        st.header("👀 Watchlist Manager")
+            with st.expander("🗑 Delete Stock"):
+                stock_to_delete = st.selectbox("Select Stock to Delete", portfolio_df["Stock"])
+                if st.button("Delete Stock"):
+                    st.session_state.portfolio = portfolio_df[portfolio_df["Stock"] != stock_to_delete]
+                    st.success(f"Deleted {stock_to_delete} from portfolio")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            watch_sym = st.text_input("Stock Symbol")
-        with col2:
-            wl_btn = st.button("Add to Watchlist")
+    elif selected_tab == "Watchlist":
+        st.title("🔎 Watchlist")
+        if "watchlist" not in st.session_state:
+            st.session_state.watchlist = []
 
-        if wl_btn and watch_sym:
-            watchlist.append({"stock": watch_sym.upper()})
-            save_data("watchlist.json", watchlist)
-            st.success(f"{watch_sym.upper()} added to watchlist.")
+        new_watch = st.text_input("Add Ticker to Watchlist").upper()
+        if st.button("Add to Watchlist") and new_watch:
+            if new_watch not in st.session_state.watchlist:
+                st.session_state.watchlist.append(new_watch)
+                st.success(f"{new_watch} added to watchlist")
 
-        st.subheader("📋 Watchlist")
-        if len(watchlist) == 0:
-            st.info("Add stocks to your watchlist.")
-        else:
-            df_watch = pd.DataFrame(watchlist)
-            st.table(df_watch)
-
-        if len(watchlist) > 0:
-            names = [w["stock"] for w in watchlist]
-            del_watch = st.selectbox("Remove watchlist item", names)
-            if st.button("Delete Watchlist Item"):
-                watchlist = [w for w in watchlist if w["stock"] != del_watch]
-                save_data("watchlist.json", watchlist)
-                st.warning(f"{del_watch} removed.")
-
-    # -----------------------------
-    # TAB 3 — STOCK MARKET CHARTS
-    # -----------------------------
-    with tab3:
-        st.header("📈 Live Market Charts")
-
-        chart_sym = st.text_input("Enter Stock Symbol for Chart (e.g., RELIANCE)")
-
-        if st.button("Load Chart") and chart_sym:
-            try:
-                data = yf.download(chart_sym + ".NS", period="6mo")
-                fig = px.line(data, x=data.index, y="Close", title=f"{chart_sym.upper()} — 6 Months Price Trend")
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.error(f"Could not fetch chart data. Error: {str(e)}")
+        if st.session_state.watchlist:
+            watch_data = []
+            for ticker in st.session_state.watchlist:
+                try:
+                    price = yf.Ticker(ticker).info["regularMarketPrice"]
+                except:
+                    price = None
+                watch_data.append({"Stock": ticker, "Current Price": price})
+            st.dataframe(pd.DataFrame(watch_data))
