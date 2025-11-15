@@ -1,10 +1,26 @@
-numpy==1.26.5
-pandas==2.3.3
-streamlit==1.51.0
-yfinance==0.2.54
-plotly==6.4.0
-PyYAML==6.0.3
-bcrypt==5.0.0
-requests==2.32.5
-streamlit-authenticator==0.4.2
-matplotlib==3.8.4
+# Core
+streamlit>=1.30.0,<2.0.0
+numpy>=1.26.0,<1.27
+pandas>=2.1.0,<3.0.0
+
+# Finance / Data
+yfinance>=0.2.31,<0.3.0
+
+# Utilities
+matplotlib>=3.8.0,<4.0.0
+plotly>=6.2.0,<7.0.0
+seaborn>=0.12.2,<0.13.0
+
+# Rich logging for Streamlit
+rich>=14.2.0,<15.0.0
+
+# Markdown support
+markdown-it-py>=4.0.0,<5.0.0
+mdurl>=0.1.2,<0.2.0
+pygments>=2.19.2,<3.0.0
+
+# Optional: For date handling
+python-dateutil>=2.9.0,<3.0.0
+
+# Optional: For caching / performance
+requests>=2.31.0,<3.0.0
