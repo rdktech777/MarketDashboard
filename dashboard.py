@@ -8,9 +8,9 @@ import pandas as pd
 import yfinance as yf
 import plotly.express as px
 
-# ---------------------------------------------------------
+# -----------------------------
 # Load Authentication Config
-# ---------------------------------------------------------
+# -----------------------------
 with open("config.yaml") as file:
     config = yaml.load(file, Loader=SafeLoader)
 
@@ -18,7 +18,7 @@ authenticator = stauth.Authenticate(
     credentials=config['credentials'],
     cookie_name=config['cookie']['name'],
     key=config['cookie']['key'],
-    cookie_expiry_days=config['cookie']['expiry_days'],
+    cookie_expiry_days=config['cookie']['expiry_days']
 )
 
 name, auth_status, username = authenticator.login(
@@ -26,24 +26,20 @@ name, auth_status, username = authenticator.login(
     location="main"
 )
 
-# ---------------------------------------------------------
+# -----------------------------
 # Handle login states
-# ---------------------------------------------------------
+# -----------------------------
 if auth_status is False:
     st.error("❌ Incorrect username or password.")
-
 elif auth_status is None:
     st.warning("⚠️ Please enter your login details.")
-
 elif auth_status:
-
-    # Sidebar user info
     authenticator.logout("Logout", "sidebar")
     st.sidebar.success(f"👤 Logged in as: **{username}**")
 
-    # ---------------------------------------------------------
+    # -----------------------------
     # JSON Data Handling
-    # ---------------------------------------------------------
+    # -----------------------------
     def load_data(filename):
         if not os.path.exists(filename):
             with open(filename, "w") as f:
@@ -63,9 +59,9 @@ elif auth_status:
 
     tab1, tab2, tab3 = st.tabs(["💼 Portfolio", "👀 Watchlist", "📈 Market Charts"])
 
-    # ---------------------------------------------------------
+    # -----------------------------
     # TAB 1 — PORTFOLIO
-    # ---------------------------------------------------------
+    # -----------------------------
     with tab1:
         st.header("💼 Portfolio Manager")
 
@@ -104,9 +100,9 @@ elif auth_status:
                 save_data("portfolio.json", portfolio)
                 st.warning(f"{del_pick} deleted.")
 
-    # ---------------------------------------------------------
+    # -----------------------------
     # TAB 2 — WATCHLIST
-    # ---------------------------------------------------------
+    # -----------------------------
     with tab2:
         st.header("👀 Watchlist Manager")
 
@@ -136,9 +132,9 @@ elif auth_status:
                 save_data("watchlist.json", watchlist)
                 st.warning(f"{del_watch} removed.")
 
-    # ---------------------------------------------------------
+    # -----------------------------
     # TAB 3 — STOCK MARKET CHARTS
-    # ---------------------------------------------------------
+    # -----------------------------
     with tab3:
         st.header("📈 Live Market Charts")
 
