@@ -1,52 +1,117 @@
+import json
+import os
 import streamlit as st
-import yfinance as yf
-import pandas as pd
 
-st.set_page_config(page_title="Indian Stock Dashboard", layout="wide")
+# ---------------------------
+# JSON STORAGE HELPERS
+# ---------------------------
 
+def load_data(filename):
+    if not os.path.exists(filename):
+        with open(filename, "w") as f:
+            json.dump([], f)
+    with open(filename, "r") as f:
+        return json.load(f)
+
+def save_data(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
+
+
+# ---------------------------
+# APP UI
+# ---------------------------
+st.set_page_config(page_title="India Stock Dashboard", layout="wide")
 st.title("📈 Indian Stock Portfolio Dashboard")
 
-# ---- Portfolio Table ----
-st.subheader("Your Portfolio")
 
-if "portfolio" not in st.session_state:
-    st.session_state.portfolio = pd.DataFrame(columns=["Stock", "Qty", "Avg Price"])
+# ---------------------------
+# LOAD DATA
+# ---------------------------
+portfolio = load_data("portfolio.json")
+watchlist = load_data("watchlist.json")
 
-# Add new stock
-with st.expander("➕ Add New Stock"):
-    s = st.text_input("Stock Symbol (NSE) e.g. TCS.NS")
-    q = st.number_input("Quantity", step=1)
-    p = st.number_input("Average Price", step=1.0)
-    if st.button("Add"):
-        st.session_state.portfolio.loc[len(st.session_state.portfolio)] = [s, q, p]
-        st.success("Added!")
 
-# delete option
-if len(st.session_state.portfolio) > 0:
-    delete_index = st.selectbox("Delete a stock", [None] + list(st.session_state.portfolio.index))
-    if st.button("Delete Stock") and delete_index is not None:
-        st.session_state.portfolio.drop(delete_index, inplace=True)
-        st.success("Deleted!")
+# ---------------------------
+# TABS
+# ---------------------------
+tab1, tab2 = st.tabs(["💼 Portfolio", "👀 Watchlist"])
 
-st.write(st.session_state.portfolio)
 
-# ---- Market Price Fetch ----
-if len(st.session_state.portfolio) > 0:
-    st.subheader("Live Prices (or LTP when market is closed)")
+# ============================================
+# TAB 1 ▸ PORTFOLIO
+# ============================================
+with tab1:
 
-    data = []
-    for idx, row in st.session_state.portfolio.iterrows():
-        try:
-            ticker = yf.Ticker(row["Stock"])
-            price = ticker.history(period="1d")["Close"].iloc[-1]   # LTP
-            value = price * row["Qty"]
-            gain = (price - row["Avg Price"]) * row["Qty"]
+    st.header("💼 Your Portfolio")
 
-            data.append([row["Stock"], price, value, gain])
+    st.subheader("Add Stock to Portfolio")
 
-        except:
-            data.append([row["Stock"], "Error", "Error", "Error"])
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        stock = st.text_input("Stock Name (e.g. TATAMOTORS)")
+    with col2:
+        qty = st.number_input("Quantity", min_value=1, value=1)
+    with col3:
+        avg_price = st.number_input("Average Buy Price", min_value=1.0, value=1.0)
+    with col4:
+        add_button = st.button("Add")
 
-    df2 = pd.DataFrame(data, columns=["Stock", "LTP", "Current Value", "Gain/Loss"])
-    st.dataframe(df2)
+    if add_button and stock:
+        portfolio.append({
+            "stock": stock.upper(),
+            "qty": qty,
+            "avg_price": avg_price
+        })
+        save_data("portfolio.json", portfolio)
+        st.success(f"Added {stock} to portfolio! Refresh to view.")
 
+    st.subheader("📋 Your Portfolio Data")
+
+    if len(portfolio) == 0:
+        st.info("No stocks in portfolio.")
+    else:
+        st.table(portfolio)
+
+    # Delete
+    st.subheader("🗑 Delete Stock From Portfolio")
+    names = [p["stock"] for p in portfolio]
+    
+    if names:
+        stock_to_delete = st.selectbox("Select stock to delete", names)
+        if st.button("Delete"):
+            portfolio = [p for p in portfolio if p["stock"] != stock_to_delete]
+            save_data("portfolio.json", portfolio)
+            st.warning(f"{stock_to_delete} deleted. Refresh to view.")
+
+
+# ============================================
+# TAB 2 ▸ WATCHLIST
+# ============================================
+with tab2:
+    st.header("👀 Watchlist")
+
+    st.subheader("Add Stock to Watchlist")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        watch_stock = st.text_input("Stock Symbol (e.g. RELIANCE)")
+    with col2:
+        wl_add = st.button("Add to Watchlist")
+
+    if wl_add and watch_stock:
+        watchlist.append({"stock": watch_stock.upper()})
+        save_data("watchlist.json", watchlist)
+        st.success(f"Added {watch_stock} to watchlist! Refresh to view.")
+
+    st.subheader("📋 Watchlist Data")
+    st.table(watchlist)
+
+    # Delete watchlist stock
+    names2 = [w["stock"] for w in watchlist]
+    if names2:
+        wl_to_del = st.selectbox("Delete from watchlist", names2)
+        if st.button("Delete Watchlist Item"):
+            watchlist = [w for w in watchlist if w["stock"] != wl_to_del]
+            save_data("watchlist.json", watchlist)
+            st.warning(f"{wl_to_del} removed. Refresh to view.")

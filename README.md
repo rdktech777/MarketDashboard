@@ -1,8 +1,1 @@
-streamlit==1.39.0
-pandas
-yfinance
-plotly
-
-
 "# MarketDashboard" 
-
