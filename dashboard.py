@@ -4,12 +4,11 @@ import yfinance as yf
 import streamlit_authenticator as stauth
 import yaml
 
-# --------------------------
-# ---- Load config.yaml ----
-# --------------------------
+# Load YAML config
 with open("config.yaml") as file:
     config = yaml.safe_load(file)
 
+# Initialize authenticator
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
@@ -27,9 +26,7 @@ elif authentication_status:
     st.success(f"Welcome {name}!")
     authenticator.logout("Logout", "sidebar")
 
-    # --------------------------
-    # ---- Dashboard Tabs ------
-    # --------------------------
+    # Dashboard Tabs
     tabs = ["Portfolio", "Watchlist"]
     selected_tab = st.sidebar.radio("Navigate", tabs)
 

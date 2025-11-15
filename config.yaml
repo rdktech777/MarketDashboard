@@ -1,11 +1,16 @@
-credentials:
+ 
+  credentials:
   users:
+    admin:
+      name: Admin User
+      password: $2b$12$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     pvenka12:
-      email: "sarathvenki@gmail.com"
-      name: "pvenka12"
-      password: "$2b$12$xxLmyDQvvODQFwiX1u1XL.w1ByhCC5PCrGBRAPtG0wiHw9XRHnAdK"
-
+      name: Venkatesh PS
+      password: $2b$12$xxLmyDQvvODQFwiX1u1XL.w1ByhCC5PCrGBRAPtG0wiHw9XRHnAdK
 cookie:
+  name: dashboard_cookie
+  key: dashboard_key
   expiry_days: 9999
-  name: "auth_cookie"
-  key: "supersecretkey123"
+
+preauthorized:
+  emails: []
