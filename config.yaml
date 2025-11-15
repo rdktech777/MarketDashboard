@@ -1,16 +1,15 @@
-credentials:
-  usernames:
-    pvenka12:
-      email: "sarathvenki@gmail.com"
-      name: "pvenka12"
-      password: "$2b$12$xxLmyDQvvODQFwiX1u1XL.w1ByhCC5PCrGBRAPtG0wiHw9XRHnAdK"
-
-cookie:
-  expiry_days: 9999
-  key: "super_secret_key_123"
-  name: "auth_cookie"
-
 preauthorized:
   emails:
     - "sarathvenki@gmail.com"
 
+credentials:
+  usernames:
+    pvenka12:
+      email: "sarathvenki@gmail.com"
+      name: "P Venkat"
+      password: "$2b$12$xxLmyDQvvODQFwiX1u1XL.w1ByhCC5PCrGBRAPtG0wiHw9XRHnAdK"
+
+cookie:
+  name: "stock_app"
+  key: "super_secure_cookie_key_12345"
+  expiry_days: 9999
