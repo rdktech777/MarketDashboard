@@ -1,18 +1,23 @@
+# dashboard_pro.py
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 import json
 import os
+import pandas as pd
+import yfinance as yf
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+from io import StringIO, BytesIO
 
-
-# ---------------------------------------
-# LOAD AUTH CONFIG
-# ---------------------------------------
+# -------------------------
+# CONFIG / AUTH
+# -------------------------
+@st.cache_data(ttl=3600)
 def load_config():
-    with open("config.yaml", "r") as file:
-        return yaml.load(file, Loader=SafeLoader)
-
+    with open("config.yaml", "r") as f:
+        return yaml.load(f, Loader=SafeLoader)
 
 config = load_config()
 
@@ -24,129 +29,301 @@ authenticator = stauth.Authenticate(
     config.get('preauthorized')
 )
 
-
-# ---------------------------------------
-# LOGIN UI
-# ---------------------------------------
-st.set_page_config(page_title="Indian Stock Dashboard", layout="wide")
-
+st.set_page_config(page_title="STOCKS MONITORING DASHBOARD WITH REALTIME DATA FEED", layout="wide")
 name, auth_status, username = authenticator.login("Login", "main")
 
 if auth_status is False:
-    st.error("Invalid username or password")
-
+    st.error("Invalid username / password")
+    st.stop()
 elif auth_status is None:
-    st.warning("Please enter your username and password")
+    st.warning("Please enter username and password")
+    st.stop()
 
+# -------------------------
+# Helper: JSON storage
+# -------------------------
+def ensure_file(fn):
+    if not os.path.exists(fn):
+        with open(fn, "w") as f:
+            json.dump([], f)
 
-# ---------------------------------------
-# IF LOGGED IN — SHOW DASHBOARD
-# ---------------------------------------
-if auth_status:
+def load_json(fn):
+    ensure_file(fn)
+    with open(fn, "r") as f:
+        return json.load(f)
 
-    # Logout button
-    authenticator.logout("Logout", "sidebar")
-    st.sidebar.success(f"👤 Logged in as: **{name}**")
+def save_json(fn, data):
+    with open(fn, "w") as f:
+        json.dump(data, f, indent=4)
 
-    st.title("📈 Indian Stock Portfolio Dashboard")
+# files
+PORTF_FILE = "portfolio.json"
+WATCH_FILE = "watchlist.json"
+ensure_file(PORTF_FILE)
+ensure_file(WATCH_FILE)
 
-    # ---------------------------------------
-    # JSON DATA HELPERS
-    # ---------------------------------------
-    def load_json(filename):
-        if not os.path.exists(filename):
-            with open(filename, "w") as f:
-                json.dump([], f)
-        with open(filename, "r") as f:
-            return json.load(f)
+# -------------------------
+# Data: load
+# -------------------------
+portfolio = load_json(PORTF_FILE)  # list of dicts: stock, qty, avg_price, exchange(optional)
+watchlist = load_json(WATCH_FILE)  # list of dicts: stock, exchange(optional), alert_price(optional)
 
-    def save_json(filename, data):
-        with open(filename, "w") as f:
-            json.dump(data, f, indent=4)
+# -------------------------
+# Utilities: ticker normalization & price fetch
+# -------------------------
+def normalize_ticker(ticker: str, exchange_hint: str = "NSE"):
+    """Return ticker string compatible with yfinance. For NSE use .NS suffix"""
+    t = ticker.strip().upper()
+    # if user already gave suffix, return as-is
+    if "." in t:
+        return t
+    if exchange_hint and exchange_hint.upper() in ("NSE", "NIFTY", "BSE"):
+        if exchange_hint.upper() == "BSE":
+            # BSE tickers aren't reliably supported on yfinance; user should provide full ticker
+            return t
+        return f"{t}.NS"
+    return f"{t}.NS"
 
-    portfolio = load_json("portfolio.json")
-    watchlist = load_json("watchlist.json")
+@st.cache_data(ttl=30)
+def fetch_quote(ticker: str):
+    """Return (symbol, current_price, previous_close, timestamp) or (symbol, None, None, None) on error"""
+    try:
+        t = yf.Ticker(ticker)
+        # fetch last close using history to avoid flaky info fields
+        hist = t.history(period="5d", interval="1d")
+        if hist is None or hist.empty:
+            return ticker, None, None, None
+        last = hist["Close"].iloc[-1]
+        prev = hist["Close"].iloc[-2] if len(hist) >= 2 else last
+        ts = hist.index[-1].to_pydatetime()
+        return ticker, float(last), float(prev), ts
+    except Exception:
+        return ticker, None, None, None
 
-    # ---------------------------------------
-    # TABS
-    # ---------------------------------------
-    tab1, tab2 = st.tabs(["💼 Portfolio", "👀 Watchlist"])
+@st.cache_data(ttl=300)
+def fetch_history(ticker: str, period="6mo", interval="1d"):
+    try:
+        t = yf.Ticker(ticker)
+        hist = t.history(period=period, interval=interval)
+        return hist
+    except Exception:
+        return pd.DataFrame()
 
-    # ============================================
-    # PORTFOLIO TAB
-    # ============================================
-    with tab1:
-        st.header("💼 Your Portfolio")
+# -------------------------
+# Logged-in UI
+# -------------------------
+authenticator.logout("Logout", "sidebar")
+st.sidebar.success(f"👤 Logged in as: **{name}**")
+st.title("📈 Professional Indian Stock Dashboard")
 
-        st.subheader("Add a New Stock")
+# Sidebar controls
+with st.sidebar.expander("Portfolio Controls"):
+    st.write("Import / Export")
+    col_im, col_ex = st.columns(2)
+    with col_im:
+        uploaded = st.file_uploader("Import portfolio JSON", type=["json"])
+        if uploaded:
+            try:
+                data = json.load(uploaded)
+                save_json(PORTF_FILE, data)
+                st.success("Portfolio imported. Refreshing...")
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"Invalid JSON: {e}")
+    with col_ex:
+        if st.button("Export portfolio JSON"):
+            with open(PORTF_FILE, "r") as f:
+                btn = st.download_button("Download portfolio.json", f.read(), file_name="portfolio.json", mime="application/json")
 
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            stock = st.text_input("Stock Symbol (e.g. TATAPOWER)")
-        with col2:
-            qty = st.number_input("Quantity", min_value=1, value=1)
-        with col3:
-            avg_price = st.number_input("Average Buy Price", min_value=1.0, value=1.0)
-        with col4:
-            add_btn = st.button("Add Stock")
+    st.markdown("---")
+    st.write("Quick actions")
+    if st.button("Clear portfolio"):
+        save_json(PORTF_FILE, [])
+        st.experimental_rerun()
 
-        if add_btn and stock:
-            portfolio.append({
-                "stock": stock.upper(),
+with st.sidebar.expander("Watchlist Controls"):
+    if st.button("Export watchlist"):
+        with open(WATCH_FILE, "r") as f:
+            st.download_button("Download watchlist.json", f.read(), file_name="watchlist.json", mime="application/json")
+    if st.button("Clear watchlist"):
+        save_json(WATCH_FILE, [])
+        st.experimental_rerun()
+
+# Tabs for main area
+tab_overview, tab_portfolio, tab_watch, tab_tools = st.tabs(["Overview", "Portfolio", "Watchlist", "Tools"])
+
+# -------------------------
+# Overview tab
+# -------------------------
+with tab_overview:
+    st.header("Portfolio Overview")
+
+    # Compute live prices for portfolio
+    if portfolio:
+        df_rows = []
+        total_invested = 0.0
+        total_market = 0.0
+        for p in portfolio:
+            symbol = p.get("stock")
+            qty = p.get("qty", 0)
+            avg = p.get("avg_price", 0.0)
+            yf_sym = normalize_ticker(symbol, p.get("exchange", "NSE"))
+            tk, price, prev, ts = fetch_quote(yf_sym)
+            invested = qty * avg
+            market = qty * (price if price is not None else 0.0)
+            pl = market - invested
+            pl_pct = (pl / invested * 100) if invested else 0.0
+            total_invested += invested
+            total_market += market
+            df_rows.append({
+                "stock": symbol.upper(),
+                "yf_ticker": yf_sym,
                 "qty": qty,
-                "avg_price": avg_price
+                "avg_price": avg,
+                "invested": round(invested,2),
+                "current_price": round(price,2) if price else None,
+                "market_value": round(market,2),
+                "unrealized_pl": round(pl,2),
+                "pl_pct": round(pl_pct,2)
             })
-            save_json("portfolio.json", portfolio)
-            st.success(f"{stock.upper()} added to portfolio! Refresh to view.")
+        df_port = pd.DataFrame(df_rows).sort_values("market_value", ascending=False)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Invested (₹)", f"{total_invested:,.2f}")
+        col2.metric("Total Market Value (₹)", f"{total_market:,.2f}")
+        col3.metric("Unrealized P&L (₹)", f"{(total_market-total_invested):,.2f}")
+        st.dataframe(df_port, use_container_width=True)
 
-        st.subheader("📋 Portfolio Data")
+        # Allocation pie chart
+        st.subheader("Allocation")
+        fig1, ax1 = plt.subplots()
+        # avoid zero sum
+        vals = df_port["market_value"].replace(0, 0.0001)
+        ax1.pie(vals, labels=df_port["stock"], autopct="%1.1f%%", startangle=90)
+        ax1.axis("equal")
+        st.pyplot(fig1)
 
-        if len(portfolio) == 0:
-            st.info("No stocks in portfolio.")
+        # Portfolio performance over time (using historical closes)
+        st.subheader("Portfolio Value Over Time (approx)")
+        # build time series by summing qty * close for each stock for the last 6 months
+        end = datetime.now()
+        start = end - timedelta(days=180)
+        dates = pd.date_range(start=start.date(), end=end.date(), freq="1D")
+        portfolio_series = pd.Series(0.0, index=dates)
+        for p in portfolio:
+            sym = normalize_ticker(p["stock"], p.get("exchange","NSE"))
+            hist = fetch_history(sym, period="6mo", interval="1d")
+            if hist is None or hist.empty:
+                continue
+            # align to our date index
+            hist_close = hist["Close"].reindex(dates, method="ffill").fillna(method="ffill").fillna(0)
+            portfolio_series = portfolio_series + hist_close * p.get("qty",0)
+        if portfolio_series.sum() == 0:
+            st.info("Not enough historical data to plot performance.")
         else:
-            st.table(portfolio)
+            fig2, ax2 = plt.subplots()
+            ax2.plot(portfolio_series.index, portfolio_series.values)
+            ax2.set_title("Portfolio Value (last 6 months)")
+            ax2.set_ylabel("Value (₹)")
+            st.pyplot(fig2)
+    else:
+        st.info("Your portfolio is empty. Add stocks in the Portfolio tab.")
 
-        st.subheader("🗑 Delete Stock")
+# -------------------------
+# Portfolio tab: detailed CRUD + per-stock charting + export
+# -------------------------
+with tab_portfolio:
+    st.header("Portfolio Manager")
 
-        stock_names = [p["stock"] for p in portfolio]
+    # Add new stock form
+    with st.form("add_stock_form", clear_on_submit=True):
+        c1, c2, c3, c4 = st.columns([2,1,1,1])
+        with c1:
+            new_stock = st.text_input("Stock symbol (e.g. TATAPOWER)")
+        with c2:
+            new_qty = st.number_input("Quantity", min_value=1, value=1)
+        with c3:
+            new_avg = st.number_input("Avg buy price (₹)", min_value=0.01, value=1.0, format="%.2f")
+        with c4:
+            new_exch = st.selectbox("Exchange", options=["NSE","BSE"], index=0)
+        submitted = st.form_submit_button("Add / Update")
+        if submitted and new_stock:
+            # if exists update qty & avg (append as new entry otherwise)
+            found = False
+            for entry in portfolio:
+                if entry["stock"].strip().upper() == new_stock.strip().upper():
+                    # update by averaging weighted avg
+                    old_qty = entry.get("qty",0)
+                    old_avg = entry.get("avg_price",0)
+                    total_qty = old_qty + new_qty
+                    if total_qty == 0:
+                        entry["avg_price"] = new_avg
+                    else:
+                        entry["avg_price"] = round((old_avg*old_qty + new_avg*new_qty)/total_qty, 2)
+                    entry["qty"] = total_qty
+                    entry["exchange"] = new_exch
+                    found = True
+                    break
+            if not found:
+                portfolio.append({"stock": new_stock.strip().upper(), "qty": new_qty, "avg_price": float(new_avg), "exchange": new_exch})
+            save_json(PORTF_FILE, portfolio)
+            st.success(f"{new_stock.strip().upper()} added/updated.")
+            st.experimental_rerun()
 
-        if stock_names:
-            delete_name = st.selectbox("Choose stock to delete", stock_names)
-            if st.button("Delete Stock"):
-                portfolio = [p for p in portfolio if p["stock"] != delete_name]
-                save_json("portfolio.json", portfolio)
-                st.warning(f"{delete_name} removed. Refresh to view.")
+    # Current portfolio table & actions
+    st.subheader("Current Holdings")
+    if portfolio:
+        df = pd.DataFrame(portfolio)
+        st.dataframe(df, use_container_width=True)
+        # Select a stock to view history & remove
+        sel = st.selectbox("Select a holding to inspect", [p["stock"] for p in portfolio])
+        if sel:
+            entry = next((p for p in portfolio if p["stock"]==sel), None)
+            if entry:
+                st.write("Holding details:", entry)
+                sym = normalize_ticker(entry["stock"], entry.get("exchange","NSE"))
+                ticker, price, prev, ts = fetch_quote(sym)
+                st.write(f"Live: {price}   Prev: {prev}   As of: {ts}")
+                # History plot
+                hist = fetch_history(sym, period="1y", interval="1d")
+                if not hist.empty:
+                    fig, ax = plt.subplots()
+                    ax.plot(hist.index, hist["Close"])
+                    ax.set_title(f"{sel} - 1 year close")
+                    ax.set_ylabel("Price (₹)")
+                    st.pyplot(fig)
+                if st.button("Remove holding"):
+                    portfolio = [p for p in portfolio if p["stock"] != sel]
+                    save_json(PORTF_FILE, portfolio)
+                    st.warning(f"{sel} removed.")
+                    st.experimental_rerun()
+    else:
+        st.info("No holdings present.")
 
-    # ============================================
-    # WATCHLIST TAB
-    # ============================================
-    with tab2:
-        st.header("👀 Watchlist")
+    # Export CSV of current portfolio valuations (live)
+    if st.button("Export portfolio valuations CSV"):
+        # build valuations
+        rows = []
+        for p in portfolio:
+            yf_sym = normalize_ticker(p["stock"], p.get("exchange","NSE"))
+            _, price, _, _ = fetch_quote(yf_sym)
+            rows.append({
+                "stock": p["stock"],
+                "qty": p["qty"],
+                "avg_price": p["avg_price"],
+                "current_price": price,
+                "invested": p["qty"]*p["avg_price"],
+                "market_value": p["qty"]*(price if price else 0)
+            })
+        dfv = pd.DataFrame(rows)
+        csv = dfv.to_csv(index=False).encode()
+        st.download_button("Download valuations CSV", data=csv, file_name="portfolio_valuations.csv", mime="text/csv")
 
-        st.subheader("Add Stock to Watchlist")
+# -------------------------
+# Watchlist tab: add, remove, alerts
+# -------------------------
+with tab_watch:
+    st.header("Watchlist")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            watch_stock = st.text_input("Stock (e.g. RELIANCE)")
-        with col2:
-            add_wl = st.button("Add to Watchlist")
-
-        if add_wl and watch_stock:
-            watchlist.append({"stock": watch_stock.upper()})
-            save_json("watchlist.json", watchlist)
-            st.success(f"{watch_stock.upper()} added to watchlist!")
-
-        st.subheader("📋 Watchlist Data")
-        st.table(watchlist)
-
-        # Delete watchlist
-        wl_names = [w["stock"] for w in watchlist]
-
-        if wl_names:
-            wl_del = st.selectbox("Delete watchlist item", wl_names)
-            if st.button("Delete Watchlist Stock"):
-                watchlist = [w for w in watchlist if w["stock"] != wl_del]
-                save_json("watchlist.json", watchlist)
-                st.warning(f"{wl_del} removed.")
-
-
+    col_a, col_b = st.columns([3,1])
+    with col_a:
+        wl_stock = st.text_input
