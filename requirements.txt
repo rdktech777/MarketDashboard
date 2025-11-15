@@ -1,4 +1,8 @@
-streamlit
-pandas
 yfinance==0.2.54
 plotly
+streamlit
+streamlit-authenticator
+pyyaml
+bcrypt
+yfinance
+pandas
