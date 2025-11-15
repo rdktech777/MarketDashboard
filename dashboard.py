@@ -15,28 +15,31 @@ with open("config.yaml") as file:
     config = yaml.load(file, Loader=SafeLoader)
 
 authenticator = stauth.Authenticate(
-    config['credentials'],
-    config['cookie']['name'],
-    config['cookie']['key'],
-    config['cookie']['expiry_days']
+    credentials=config['credentials'],
+    cookie_name=config['cookie']['name'],
+    key=config['cookie']['key'],
+    cookie_expiry_days=config['cookie']['expiry_days'],
 )
 
-name, auth_status, username = authenticator.login("Login", "main")
+name, auth_status, username = authenticator.login(
+    form_name="Login",
+    location="main"
+)
 
 # ---------------------------------------------------------
-# Login Logic
+# Handle login states
 # ---------------------------------------------------------
-if auth_status == False:
-    st.error("Username or password is incorrect.")
+if auth_status is False:
+    st.error("❌ Incorrect username or password.")
 
-elif auth_status == None:
-    st.warning("Please enter your login details.")
+elif auth_status is None:
+    st.warning("⚠️ Please enter your login details.")
 
 elif auth_status:
 
     # Sidebar user info
     authenticator.logout("Logout", "sidebar")
-    st.sidebar.write(f"👤 Logged in as **{name}**")
+    st.sidebar.success(f"👤 Logged in as: **{username}**")
 
     # ---------------------------------------------------------
     # JSON Data Handling
@@ -56,7 +59,7 @@ elif auth_status:
     watchlist = load_data("watchlist.json")
 
     st.set_page_config(page_title="Indian Stock Dashboard", layout="wide")
-    st.title("📊 Indian Stock Dashboard")
+    st.title("📊 Indian Stock Portfolio Dashboard")
 
     tab1, tab2, tab3 = st.tabs(["💼 Portfolio", "👀 Watchlist", "📈 Market Charts"])
 
@@ -89,14 +92,14 @@ elif auth_status:
         if len(portfolio) == 0:
             st.info("Add stocks to build your portfolio.")
         else:
-            df = pd.DataFrame(portfolio)
-            st.table(df)
+            df_portfolio = pd.DataFrame(portfolio)
+            st.table(df_portfolio)
 
         st.subheader("🗑 Remove a Stock")
         if len(portfolio) > 0:
             names = [p["stock"] for p in portfolio]
             del_pick = st.selectbox("Select stock", names)
-            if st.button("Delete"):
+            if st.button("Delete Stock"):
                 portfolio = [p for p in portfolio if p["stock"] != del_pick]
                 save_data("portfolio.json", portfolio)
                 st.warning(f"{del_pick} deleted.")
@@ -119,7 +122,11 @@ elif auth_status:
             st.success(f"{watch_sym.upper()} added to watchlist.")
 
         st.subheader("📋 Watchlist")
-        st.table(watchlist)
+        if len(watchlist) == 0:
+            st.info("Add stocks to your watchlist.")
+        else:
+            df_watch = pd.DataFrame(watchlist)
+            st.table(df_watch)
 
         if len(watchlist) > 0:
             names = [w["stock"] for w in watchlist]
@@ -135,12 +142,12 @@ elif auth_status:
     with tab3:
         st.header("📈 Live Market Charts")
 
-        chart_sym = st.text_input("Enter Stock Symbol for Chart (example: RELIANCE)")
+        chart_sym = st.text_input("Enter Stock Symbol for Chart (e.g., RELIANCE)")
 
         if st.button("Load Chart") and chart_sym:
             try:
                 data = yf.download(chart_sym + ".NS", period="6mo")
                 fig = px.line(data, x=data.index, y="Close", title=f"{chart_sym.upper()} — 6 Months Price Trend")
                 st.plotly_chart(fig, use_container_width=True)
-            except:
-                st.error("Could not fetch chart data. Check the symbol or network.")
+            except Exception as e:
+                st.error(f"Could not fetch chart data. Error: {str(e)}")
