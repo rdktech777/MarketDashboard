@@ -1,22 +1,16 @@
-
-	  credentials:
+credentials:
   usernames:
-    dinesh:
-      email: "rdketch@gmail.com"
-      name: "Dinesh"
-      password: "$2b$12$YN3mobtAgfMPGRuIA.4ndOa3/VPIqRKKiZEkmos4j7SGkWVOehH/6"
-    venki:
+    pvenka12:
       email: "sarathvenki@gmail.com"
-      name: "Venkatesh PS"
-      password: "$2b$12$9AvtY8nA0yRr2Zl5wvu0XudgKnphP9vGtehheYoSAeVNAx7xDYO1K"
+      name: "pvenka12"
+      password: "$2b$12$xxLmyDQvvODQFwiX1u1XL.w1ByhCC5PCrGBRAPtG0wiHw9XRHnAdK"
 
 cookie:
-  expiry_days: 30000
-  key: "some_random_key"
-  name: "rdk_dashboard_cookie"
+  expiry_days: 9999
+  key: "super_secret_key_123"
+  name: "auth_cookie"
 
 preauthorized:
   emails:
-    - "rdketch@gmail.com"
     - "sarathvenki@gmail.com"
 
