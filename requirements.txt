@@ -23,3 +23,6 @@ mdurl>=0.1.2
 pygments>=2.19
 requests>=2.31
 python-dateutil>=2.9
+
+github
+
